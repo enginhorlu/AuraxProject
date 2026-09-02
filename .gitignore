@@ -3,3 +3,5 @@ downloaded_videos/
 *.mp4
 *.mp3
 __pycache__/
+thumbnail.jpg
+youtube_metadata.txt
