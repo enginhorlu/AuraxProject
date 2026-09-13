@@ -100,7 +100,7 @@ print(f"--- AURAXPROJECT SYSTEM ({'FREE MODE' if FREE_MODE else 'PREMIUM MODE'} 
 BRAND_CONFIG = {
     "project_name": "AuraxProject",
     "series_name": "The Price Tag",
-    "visual_style": "Kodak Ektar 100 vivid color film look, rich saturated warm tones, soft directional natural light with dappled shadow patterns through blinds or foliage, visually striking attractive people, sharp detailed eyes, symmetrical well-defined facial features, natural candid unposed behavior, genuine warm radiant expression, energetic happy lively demeanor, natural skin texture, high quality editorial photography, realistic, 35mm lens",
+    "visual_style": "Kodak Ektar 100 vivid color film look, rich saturated warm tones, visually striking attractive people, sharp detailed eyes, symmetrical well-defined facial features, natural candid unposed behavior, natural skin texture, high quality editorial photography, realistic, 35mm lens",
     "watermark_text": "AURAXPROJECT",
     "intro_hook_type": "Psychological Pattern Interrupt",
     "outro_call_to_action": "Bu bedeli odemeye devam edecek misiniz? Abone olun, gorunmeyeni gorun.",
@@ -285,16 +285,21 @@ def append_topics_to_history(topics):
 
 def fetch_viral_topic():
     print("\n[0/5] Trend Ajani Devrede...")
-    recent_topics = load_recent_topic_history()
-    avoid_block = ""
-    if recent_topics:
-        avoid_list = "\n".join(f"- {t}" for t in recent_topics)
-        avoid_block = f"""
+    # GUNCELLEME 56: Kullanicinin sadece 5 hazir secenek arasindan secme zorunlulugu
+    # kaldirildi. "0" ile kendi konusunu serbestce yazabilir, "Y" ile begenmediyse
+    # yepyeni bir 5'li liste isteyebilir (once gosterilen 5 konu zaten topic_history'ye
+    # kaydedildigi icin bir sonraki uretim bunlari otomatik olarak tekrar onermeye calismaz).
+    while True:
+        recent_topics = load_recent_topic_history()
+        avoid_block = ""
+        if recent_topics:
+            avoid_list = "\n".join(f"- {t}" for t in recent_topics)
+            avoid_block = f"""
 
 SON 14 GUNDE ZATEN GOSTERILEN KONULAR (bunlari veya cok benzer fikirleri KESINLIKLE tekrar onerme):
 {avoid_list}
 """
-    trend_prompt = f"""
+        trend_prompt = f"""
 Sen {BRAND_CONFIG['project_name']} kanali icin konu arastirmacisisin.
 Kanalin TEK ve SABIT temasi: modern hayatin "gizli bedelleri" -- rahatlik, teknoloji, hiz veya kolaylik ugruna
 odedigimiz ama fark etmedigimiz fiziksel, psikolojik, sosyal, ekonomik veya cevresel bedeller.
@@ -339,36 +344,51 @@ Cikti formati TAM OLARAK soyle olsun, baska hicbir sey ekleme:
 4: <konu>
 5: <konu>
 """
-    raw_options = call_llm_chain(trend_prompt, TREND_MODEL, prefer_gemini_first=True)
-    options = parse_topic_options(raw_options)
+        raw_options = call_llm_chain(trend_prompt, TREND_MODEL, prefer_gemini_first=True)
+        options = parse_topic_options(raw_options)
 
-    if len(options) < 3:
-        print("   [!] Konu secenekleri yetersiz/bozuk gorunuyor, Gemini ile tekrar deneniyor...")
-        retry_raw = safe_gemini_generate(trend_prompt)
-        retry_options = parse_topic_options(retry_raw)
-        if len(retry_options) > len(options):
-            options = retry_options
+        if len(options) < 3:
+            print("   [!] Konu secenekleri yetersiz/bozuk gorunuyor, Gemini ile tekrar deneniyor...")
+            retry_raw = safe_gemini_generate(trend_prompt)
+            retry_options = parse_topic_options(retry_raw)
+            if len(retry_options) > len(options):
+                options = retry_options
 
-    if not options:
-        print("   [!] Hicbir konu secenegi uretilemedi, yedek konu kullanilacak.")
-        return "Why is Google Free?"
+        if not options:
+            print("   [!] Hicbir konu secenegi uretilemedi, yedek konu kullanilacak.")
+            return "Why is Google Free?"
 
-    append_topics_to_history(options)
+        append_topics_to_history(options)
 
-    print("\n   >> Asagidaki konulardan birini secin:\n")
-    for i, opt in enumerate(options, start=1):
-        print(f"      {i}) {opt}")
+        print("\n   >> Asagidaki konulardan birini secin:\n")
+        for i, opt in enumerate(options, start=1):
+            print(f"      {i}) {opt}")
+        print("      0) Kendi konunuzu yazin")
+        print("      Y) Bu 5 konuyu begenmedim, yeni 5 konu goster")
 
-    chosen = None
-    while chosen is None:
-        raw_input_val = input(f"\n   Secim (1-{len(options)}): ").strip()
-        if raw_input_val.isdigit() and 1 <= int(raw_input_val) <= len(options):
-            chosen = options[int(raw_input_val) - 1]
-        else:
-            print(f"   [!] Gecersiz secim, 1 ile {len(options)} arasinda bir sayi girin.")
+        chosen = None
+        regenerate = False
+        while chosen is None and not regenerate:
+            raw_input_val = input(f"\n   Secim (1-{len(options)}, 0, Y): ").strip()
+            if raw_input_val == "0":
+                custom_topic = input("   Kendi konunuzu yazin: ").strip()
+                if custom_topic:
+                    chosen = custom_topic
+                else:
+                    print("   [!] Bos konu girilemez, tekrar deneyin.")
+            elif raw_input_val.lower() in ("y", "yenile"):
+                regenerate = True
+            elif raw_input_val.isdigit() and 1 <= int(raw_input_val) <= len(options):
+                chosen = options[int(raw_input_val) - 1]
+            else:
+                print(f"   [!] Gecersiz secim, 1-{len(options)} arasinda bir sayi, 0 veya Y girin.")
 
-    print(f"   >> Secilen konu: '{chosen}'")
-    return chosen
+        if regenerate:
+            print("\n   >> Yeni bir 5'li konu listesi uretiliyor...")
+            continue
+
+        print(f"   >> Secilen konu: '{chosen}'")
+        return chosen
 
 # GUNCELLEME 53: FALLBACK_TERM burada, ust seviyede tanimlaniyor - sanitize_keyword()
 # fonksiyonu hem yeni uretimde hem de eski bir oturuma devam ederken cagrilabildigi icin
@@ -617,12 +637,13 @@ Act as a Hollywood Visual Director for {BRAND_CONFIG['project_name']}.
 CONTENT SAFETY RULE (STRICT): Never suggest scenes involving smoking, cigarettes, vaping, alcohol,
 drugs, nudity, or sexual content. Keep every visual concept family-friendly and brand-safe (SFW).
 
-REPRESENTATION RULE (STRICT): When a scene depicts a person, rotate across different ethnic and
-geographic backgrounds across the full set of scenes (e.g. Asian, Black, Middle Eastern, Latin American,
-European) - no single background should dominate. NEVER default to poverty imagery for any specific
-ethnicity or region, and never default to wealth/luxury imagery for any specific ethnicity or region,
-unless that specific narration line is explicitly about economic inequality. Depict all people, regardless
-of background, in a natural but visually appealing, camera-friendly way (not exaggerated, not unflattering).
+REPRESENTATION RULE (STRICT, GUNCELLEME 55): When a scene depicts a person, describe them in NEUTRAL
+human terms only -- by their role, action, or context (e.g. "office worker", "person", "researcher",
+"a hand"), and NEVER name or imply a specific race, ethnicity, or geographic origin (do not use words
+like Asian, Black, Middle Eastern, Latin American, European, or similar) anywhere in the visual term.
+Casting and appearance are handled separately by the brand's fixed style description, not by the term
+itself. Depict all people in a natural but visually appealing, camera-friendly way (not exaggerated,
+not unflattering), without singling out or excluding any specific background.
 
 FORMAT RULE (STRICT): Each visual term must describe ONE concrete, searchable visual SUBJECT
 (a specific object, person, place, or action -- something a stock-footage site could literally search for).
@@ -684,6 +705,14 @@ smartphone" every time -- vary the concrete technology object across the scene s
 fits the specific line: laptop screen, desktop monitor, tablet, television, smartwatch, router, server
 room lights, headphones, car dashboard screen, etc.
 
+ACTION-MATCH RULE (STRICT, GUNCELLEME 55): If the narration line describes a specific action or motion
+(walking, swiping, writing, turning, sitting down, reaching, etc.), the visual term's verb MUST match
+that exact action -- not a nearby static pose. Example: if the line says someone is walking down a
+hallway, the term must depict walking (e.g. "person walking down office hallway"), NOT "person standing
+in hallway". If the line describes a state (sitting, resting, looking), match that state instead of
+inventing motion that isn't there. Never substitute a generic or more convenient pose for the one the
+line actually describes.
+
 VARIETY RULE (STRICT): Identify the CORE ANCHOR OBJECT/DEVICE of this topic (the thing the whole video
 is about -- e.g. a smartwatch, a phone, a delivery package). This anchor object may be the MAIN VISUAL
 FOCUS in AT MOST 2 scenes across the entire numbered set below -- this cap applies regardless of how the
@@ -703,15 +732,19 @@ output ONE concrete visual search term (aim for exactly 5 words in English) that
 that specific line is talking about -- not a generic or loosely related idea. Apply the SPECIFICITY and
 VARIETY rules above across the full set of terms you output.
 
-Additionally, for EACH line, suggest ONE short camera/motion direction in Turkish (3-6 words) describing
-how this specific image could be subtly animated if turned into a short video clip (examples: "yavas
-sagdan sola kaydirma", "hafif ileri zoom", "sabit, hafif nefes efekti", "yukaridan asagiya yavas
-kaydirma"). Keep this concrete to the image's own content, not a generic instruction repeated everywhere.
+Additionally, for EACH line, suggest ONE short camera/motion direction in English (3-6 words) describing
+how this specific image could be subtly animated if turned into a short video clip (examples: "slow pan
+left to right", "gentle push-in zoom", "static, subtle breathing motion", "slow tilt down"). Keep this
+concrete to the image's own content, not a generic instruction repeated everywhere.
+
+IMPORTANT: Every visual term (aim for 5-7 words) must end on a complete, concrete noun or phrase -- NEVER
+end on a preposition, article, or dangling word (bad: "hand holding digital stylus on"; good: "hand
+holding digital stylus on glass").
 
 Output EXACTLY {len(segments)} lines, same numbering, in this format (term and motion direction
 separated by " | "):
-1: <visual term> | <camera/motion direction in Turkish>
-2: <visual term> | <camera/motion direction in Turkish>
+1: <visual term> | <camera/motion direction in English>
+2: <visual term> | <camera/motion direction in English>
 ...
 
 Narration lines:
@@ -747,7 +780,7 @@ Narration lines:
             animations = retry_animations
 
     FALLBACK_TERM = "abstract dark background with subtle motion"
-    FALLBACK_ANIMATION = "sabit, hafif nefes efekti"
+    FALLBACK_ANIMATION = "static, subtle breathing motion"
     while len(keywords) < len(segments):
         keywords.append(FALLBACK_TERM)
     while len(animations) < len(segments):
@@ -755,12 +788,22 @@ Narration lines:
     keywords = keywords[:len(segments)]
     animations = animations[:len(segments)]
 
-    # GUNCELLEME 53: Arama terimini 5 kelimeye zorla (fazlaysa kirpilir, azsa oldugu gibi kalir).
-    def enforce_word_limit(term, limit=5):
-        words = term.split()
+    # GUNCELLEME 54: Eski hali (sabit 5 kelimeye kirpma) cumleyi ortadan kesebiliyordu
+    # ("...stylus on", "...healed arm in" gibi). Simdi ust sinir daha gevsek (8 kelime,
+    # 5-7 zaten prompt'ta isteniyor) ve her turlu -- sinira takilsin takilmasin -- terimin
+    # SONUNDA sarkan bir edat/artikel/noktalama KALMAMASI icin arkadan temizlik yapiliyor.
+    TRAILING_STOPWORDS = {"on", "in", "at", "of", "with", "over", "upward", "facing", "against",
+                           "near", "to", "for", "and", "the", "a", "an", "from", "into", "onto",
+                           "under", "through", "between", "behind", "beside", "upon", "toward",
+                           "towards", "by", "as"}
+
+    def enforce_word_limit(term, limit=8):
+        words = term.strip().split()
         if len(words) > limit:
-            return " ".join(words[:limit])
-        return term
+            words = words[:limit]
+        while len(words) > 1 and words[-1].strip(",.;:").lower() in TRAILING_STOPWORDS:
+            words = words[:-1]
+        return " ".join(words).rstrip(",.;: ")
 
     keywords = [enforce_word_limit(k) for k in keywords]
     print(f"   >> {len(keywords)} Gorsel Terim ve Hareket Yonergesi Olusturuldu (segment sayisiyla eslesti).")
@@ -782,9 +825,43 @@ def sanitize_keyword(raw_prompt):
         return FALLBACK_TERM
     return raw_prompt
 
-def optimize_prompt(raw_prompt):
+# GUNCELLEME 54: Isik ve ifade artik BRAND_CONFIG['visual_style'] icinde sabit tek
+# cumle degil - sahne sirasina gore donen bir havuzdan seciliyor. Boylece marka kimligi
+# (renk grade'i, kalite tanimlari) sabit kalirken, her sahne ayni "panjur isigi + hep
+# gulumseyen" kalibina hapsolmuyor.
+LIGHT_POOL = [
+    "soft window light with gentle shadows",
+    "warm lamp light in a cozy interior",
+    "overcast daylight, soft diffused light",
+    "golden hour light through a window",
+    "dappled natural light through blinds or foliage",
+    "bright even daylight, minimal shadow",
+]
+EXPRESSION_POOL = [
+    "calm and focused expression",
+    "curious and attentive expression",
+    "quiet, thoughtful expression",
+    "natural genuine smile",
+    "relaxed, at ease demeanor",
+]
+NEUTRAL_EXPRESSION = "quiet, thoughtful expression"
+# Segment metninde bu kelimelerden biri geciyorsa, ifade rotasyonu gormezden gelinir ve
+# NEUTRAL_EXPRESSION zorlanir - "yalniz oturan biri" artik zorla gulumsemez.
+SOLITARY_KEYWORDS = ["yalnız", "yalniz", "sessiz", "üzgün", "uzgun", "yalnızlık", "yalnizlik",
+                     "kayıp", "kayip", "hüzün", "huzun", "tek başına", "tek basina"]
+
+def pick_expression(index, segment_text=""):
+    if segment_text:
+        lowered = segment_text.lower()
+        if any(k in lowered for k in SOLITARY_KEYWORDS):
+            return NEUTRAL_EXPRESSION
+    return EXPRESSION_POOL[index % len(EXPRESSION_POOL)]
+
+def optimize_prompt(raw_prompt, index=0, segment_text=""):
     safe_prompt = sanitize_keyword(raw_prompt)
-    return f"{safe_prompt}, {BRAND_CONFIG['visual_style']}"
+    light = LIGHT_POOL[index % len(LIGHT_POOL)]
+    expression = pick_expression(index, segment_text)
+    return f"{safe_prompt}, {BRAND_CONFIG['visual_style']}, {light}, {expression}"
 
 # GUNCELLEME 52: CHECKPOINT A - uretime baslamadan once, tum sahnelerin arama
 # terimini VE tam Leonardo prompt'unu gosterir. Boylece Leonardo hic cagrilmadan,
@@ -800,9 +877,11 @@ if MANUAL_REVIEW:
         with open("scene_prompts.txt", "w", encoding="utf-8") as f:
             f.write(f"KONU: {current_topic}\n\n")
             for idx, kw_item in enumerate(keywords, start=1):
-                full_prompt = optimize_prompt(kw_item)
+                seg_text = segments[idx - 1]["text"] if idx - 1 < len(segments) else ""
+                full_prompt = optimize_prompt(kw_item, idx - 1, seg_text)
                 anim = animations[idx - 1] if idx - 1 < len(animations) else ""
-                f.write(f"Sahne {idx}\n")
+                f.write(f"scene_{idx}\n")
+                f.write(f"Senaryo cumlesi  : {seg_text}\n")
                 f.write(f"Arama terimi     : {kw_item}\n")
                 f.write(f"Flow prompt      : {full_prompt}\n")
                 f.write(f"Hareket yonergesi: {anim}\n\n")
@@ -811,9 +890,12 @@ if MANUAL_REVIEW:
         print(f"   [!] scene_prompts.txt yazilamadi: {e}")
 
     for idx, kw_item in enumerate(keywords, start=1):
-        full_prompt = optimize_prompt(kw_item)
+        seg_text = segments[idx - 1]["text"] if idx - 1 < len(segments) else ""
+        full_prompt = optimize_prompt(kw_item, idx - 1, seg_text)
         anim = animations[idx - 1] if idx - 1 < len(animations) else ""
-        print(f"      {idx}) Arama terimi: {kw_item}")
+        print(f"      scene_{idx}")
+        print(f"         Senaryo cumlesi: {seg_text}")
+        print(f"         Arama terimi : {kw_item}")
         print(f"         Tam prompt   : {full_prompt}")
         print(f"         Hareket      : {anim}\n")
 
@@ -1019,8 +1101,8 @@ def search_pixabay_video(query, min_duration):
         print(f"   [!] Pixabay video arama hatasi: {e}")
         return None
 
-def fetch_media(kw, index, target_duration=5.0):
-    opt_kw = optimize_prompt(kw)
+def fetch_media(kw, index, target_duration=5.0, segment_text=""):
+    opt_kw = optimize_prompt(kw, index, segment_text)
 
     for ext in ("jpg", "jpeg", "png"):
         manual_path = os.path.join(MANUAL_IMAGES_DIR, f"scene_{index+1}.{ext}")
@@ -1093,7 +1175,7 @@ for i, (kw, seg) in enumerate(zip(keywords, segments)):
     target_duration = max(0.5, seg["end"] - seg["start"])
     if i == segment_count - 1 and segment_count > 1:
         target_duration += (segment_count - 1) * CROSSFADE_COMPENSATION
-    m_type, m_src = fetch_media(kw, i, target_duration)
+    m_type, m_src = fetch_media(kw, i, target_duration, seg["text"])
     current_sfx = sfx_map[i]['type'] if i < len(sfx_map) else "whoosh"
     print(f"   >> Sahne [{i+1}/{len(segments)}] ({target_duration:.1f}sn) Kaynak -> [{m_type}] | Prompt -> '{kw[:25]}...' | SFX -> [{current_sfx}] | Watermark -> [{BRAND_CONFIG['watermark_text']}]")
 
@@ -1153,7 +1235,8 @@ if MANUAL_REVIEW and scene_files:
             old_m_type, old_path, redo_duration = scene_files[redo_idx]
             print(f"   >> Sahne {redo_idx+1} yeniden uretiliyor ('{term_to_use}')...")
             try:
-                new_m_type, new_m_src = fetch_media(term_to_use, redo_idx, redo_duration)
+                redo_seg_text = segments[redo_idx]["text"] if redo_idx < len(segments) else ""
+                new_m_type, new_m_src = fetch_media(term_to_use, redo_idx, redo_duration, redo_seg_text)
                 if new_m_type in ("image_manual", "video_manual"):
                     scene_files[redo_idx] = (new_m_type, new_m_src, redo_duration)
                     keywords[redo_idx] = term_to_use
@@ -1315,7 +1398,20 @@ if RENDER_MODE:
             # olmasin diye crossfade kapali kaliyor).
             # Duruş anindaki hareket (movement_mode) ayri bir dongu: %50 sabit, %30 hafif
             # zoom, %20 hafif el-kamerasi sarsintisi.
-            base = ImageClip(path).with_duration(target_duration).resized(height=1350)
+            # GUNCELLEME 55: Sabit "height=1350" varsayimi, kaynak gorsel Leonardo'nun
+            # standart 16:9'a yakin oranindan farkli geldiginde (ozellikle Flow'dan gelen
+            # manuel gorsel/videolarda) 1920x1080 cercevesini tam dolduramayip kosede siyah
+            # bosluk ("ters L" karartisi) birakiyordu. Artik kaynagin GERCEK en-boy oranina
+            # bakilip, 1920x1080'i her zaman tam kaplayacak minimum olcek hesaplaniyor
+            # (+ kayma/zoom payi icin fazladan buyutme).
+            from PIL import Image as _PILImage
+            with _PILImage.open(path) as _src_img:
+                src_w, src_h = _src_img.size
+            PAN_MARGIN = 1.3
+            cover_scale = max(1920 / src_w, 1080 / src_h) * PAN_MARGIN
+            target_w = max(1, int(src_w * cover_scale))
+            target_h = max(1, int(src_h * cover_scale))
+            base = ImageClip(path).with_duration(target_duration).resized(new_size=(target_w, target_h))
             w = base.w
             h = base.h
             x_center = (1920 - w) / 2
@@ -1467,6 +1563,28 @@ if RENDER_MODE:
             final_video.write_videofile("final_documentary.mp4", fps=24, codec="libx264", audio_codec="aac", ffmpeg_params=["-pix_fmt", "yuv420p"])
             print("   >> final_documentary.mp4 basariyla olusturuldu!")
 
+            # GUNCELLEME 54: Windows'ta acik dosya tutan (ozellikle manual_images'daki
+            # .mp4) klipler kapatilmadan arsivlemeye calisinca "WinError 32: dosya
+            # baska bir islem tarafindan kullaniliyor" hatasi aliniyordu. Render
+            # bitince tum klip/ses nesnelerini acikca kapatip dosya kilidini birakiyoruz.
+            try:
+                final_video.close()
+            except Exception:
+                pass
+            try:
+                narration.close()
+            except Exception:
+                pass
+            try:
+                final_audio.close()
+            except Exception:
+                pass
+            for _c in clips:
+                try:
+                    _c.close()
+                except Exception:
+                    pass
+
             # GUNCELLEME 53: Video basariyla olusturuldu - bu oturuma ait manuel
             # gorseller/videolar SILINMEZ, konu adiyla bir arsiv alt klasorune tasinir.
             # Boylece bir sonraki calistirmada "scene_1.jpg" gibi eski bir dosyayla
@@ -1475,14 +1593,27 @@ if RENDER_MODE:
                 archive_slug = slugify_topic(current_topic)
                 archive_dir = os.path.join(MANUAL_IMAGES_DIR, "arsiv", f"{archive_slug}_{datetime.now().strftime('%Y%m%d_%H%M')}")
                 moved_any = False
+                failed_files = []
                 for fname in os.listdir(MANUAL_IMAGES_DIR):
                     fpath = os.path.join(MANUAL_IMAGES_DIR, fname)
                     if os.path.isfile(fpath) and fname.lower().startswith("scene_"):
                         os.makedirs(archive_dir, exist_ok=True)
-                        shutil.move(fpath, os.path.join(archive_dir, fname))
-                        moved_any = True
+                        moved = False
+                        for _attempt in range(3):
+                            try:
+                                shutil.move(fpath, os.path.join(archive_dir, fname))
+                                moved = True
+                                break
+                            except Exception:
+                                time.sleep(1)
+                        if moved:
+                            moved_any = True
+                        else:
+                            failed_files.append(fname)
                 if moved_any:
                     print(f"   >> Kullanilan manuel gorseller/videolar '{archive_dir}' klasorune arsivlendi.")
+                if failed_files:
+                    print(f"   [!] Su dosyalar hala baska bir islem tarafindan kullanildigi icin arsivlenemedi (video etkilenmedi, elle tasiyabilirsin): {', '.join(failed_files)}")
             except Exception as e:
                 print(f"   [!] Manuel gorsel arsivleme hatasi: {e}")
 
